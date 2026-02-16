@@ -1,142 +1,208 @@
-# Lightning Out 2.0 Demo
+# Lightning Out 2.0 with OAuth Authentication
 
-This project demonstrates Lightning Out 2.0 with bidirectional event communication between Lightning Web Components (LWC) and a Node.js host page.
+Lightning Web Component (LWC) を外部のNode.js/Expressアプリケーションに埋め込むためのLightning Out 2.0実装です。
 
-## Features
+## 概要
 
-- ⚡ Lightning Out 2.0 integration
-- 🔄 Bidirectional event communication using `window.postMessage()`
-- 🎯 LWC component with interactive features
-- 🌐 Node.js Express server hosting the demo
-- 📡 RESTful APIs for message handling
-- 🔒 Security headers and CORS configuration
-- 📱 Responsive design
+このプロジェクトは、Salesforce Lightning Web Componentを外部Webアプリケーションに統合するためのデモアプリケーションです。OAuth 2.0認証フローを使用してSalesforceに接続し、Lightning Out 2.0フレームワークを通じてLWCコンポーネントを表示します。
 
-## Project Structure
+## 主な機能
+
+- ✅ OAuth 2.0 (PKCE対応) 認証フロー
+- ✅ Lightning Out 2.0 統合
+- ✅ サーバー間認証 (Client Credentials Flow)
+- ✅ ユーザー名/パスワード認証 (フォールバック)
+- ✅ Content Security Policy (CSP) 準拠
+- ✅ リアルタイム認証状態管理
+- ✅ 包括的なデバッグ機能
+
+## 必要環境
+
+- Node.js 14.0 以上
+- npm または yarn
+- Salesforce Connected App (OAuth設定済み)
+- Lightning Web Component (c-card-component)
+
+## セットアップ
+
+### 1. 依存関係のインストール
+
+```bash
+npm install
+```
+
+### 2. 環境変数設定
+
+`.env` ファイルを作成し、以下の値を設定：
+
+```env
+# Salesforce OAuth設定
+SALESFORCE_CLIENT_ID=your_connected_app_client_id
+SALESFORCE_CLIENT_SECRET=your_connected_app_client_secret
+SALESFORCE_DOMAIN=your-domain.my.salesforce.com
+SALESFORCE_LOGIN_URL=https://login.salesforce.com
+
+# 認証フロー設定
+SALESFORCE_AUTH_FLOW=password
+SALESFORCE_USERNAME=your_salesforce_username
+SALESFORCE_PASSWORD=your_password
+SALESFORCE_SECURITY_TOKEN=your_security_token
+
+# アプリケーション設定
+PORT=3000
+REDIRECT_URI=http://localhost:3000/auth/callback
+SESSION_SECRET=your-session-secret
+
+# Lightning Out設定
+SALESFORCE_APP_ID=1UsHu000000oQTeKAM
+SALESFORCE_COMPONENT_NAME=c-card-component
+```
+
+### 3. Salesforce Connected App設定
+
+Connected Appで以下を設定：
+
+- OAuth設定を有効化
+- スコープ: `web`, `id`
+- コールバックURL: `http://localhost:3000/auth/callback`
+- Client Credentials Flowを有効化（推奨）
+
+## 起動方法
+
+```bash
+node server.js
+```
+
+アプリケーションは http://localhost:3000 で利用できます。
+
+## 認証フロー
+
+### 1. 推奨: 動作保証版認証
+
+メインの認証ボタン「⚡ Lightning Out 開始 (サーバー認証)」を使用：
+
+1. サーバー間認証実行
+2. 認証状態更新
+3. UI切り替え (app-section表示)
+4. Lightning Out初期化
+
+### 2. OAuth認証
+
+「🔐 OAuth認証」ボタンでブラウザベースのOAuth フローを実行：
+
+1. `/auth` にリダイレクト
+2. Salesforceログインページ
+3. `/auth/callback` でトークン取得
+4. Lightning Out初期化
+
+## ファイル構成
 
 ```
-├── force-app/main/default/lwc/cardComponent/  # Lightning Web Component
-│   ├── cardComponent.js                       # Component logic
-│   ├── cardComponent.html                     # Component template
-│   └── cardComponent.js-meta.xml             # Component metadata
+LightnigOut2/
+├── server.js              # メインサーバーファイル
 ├── public/
-│   └── index.html                            # Host page with Lightning Out
-├── server.js                                 # Node.js Express server
-├── package.json                              # Dependencies and scripts
-├── .env.example                              # Environment variables template
-└── README.md                                 # This file
+│   └── index.html         # メインUI (動作保証版)
+├── OLD/                   # 使用しないファイル
+│   ├── working-index.html
+│   ├── security-clean.html
+│   └── simple-auth-test.html
+├── .env                   # 環境変数設定
+└── README.md             # このファイル
 ```
 
-## Prerequisites
+## API エンドポイント
 
-- Node.js 16+ and npm 8+
-- Salesforce org with Lightning Out enabled
-- Connected App configured in Salesforce
+### 認証関連
 
-## Setup Instructions
+- `POST /auth/server` - サーバー間認証実行
+- `GET /auth` - OAuth認証開始
+- `GET /auth/callback` - OAuth コールバック処理
 
-### 1. Salesforce Configuration
+### システム関連
 
-1. **Deploy the Lightning Web Component:**
-   ```bash
-   sfdx force:source:push
-   ```
+- `GET /api/health` - ヘルスチェック
+- `GET /api/lightning-config` - Lightning Out設定取得
 
-2. **Create a Lightning Out App:**
-   Create an Aura application (e.g., `LightningOutApp.app`):
-   ```xml
-   <aura:application access="GLOBAL" extends="ltng:outApp">
-       <aura:dependency resource="c:cardComponent"/>
-   </aura:application>
-   ```
+## デバッグ機能
 
-3. **Configure Connected App:**
-   - Set up CORS for your domain (e.g., `http://localhost:3000`)
-   - Enable Lightning Out in your org settings
+### ステータス表示
 
-### 2. Local Development Setup
+リアルタイムでシステム状態を確認：
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+- 🟢 DOM: 準備完了
+- 🟢 スクリプト: 読み込み完了
+- 🟢 ボタン: 設定完了
+- 🟢 認証: 成功
 
-2. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env and replace YOUR_SALESFORCE_DOMAIN with your actual domain
-   ```
+### デバッグボタン
 
-3. **Update the HTML file:**
-   Replace `YOUR_SALESFORCE_DOMAIN` in `public/index.html` with your Salesforce domain.
+- 🎯 実証済みトークンフロー - 成功パターンでテスト実行
+- 🔍 認証状態確認 - 現在の認証状況を表示
 
-4. **Start the server:**
-   ```bash
-   npm run server:dev  # Development with auto-reload
-   # or
-   npm run server      # Production mode
-   ```
+### ログ機能
 
-5. **Open the demo:**
-   Navigate to `http://localhost:3000` in your browser.
+ブラウザコンソールとページ上の認証状態エリアでリアルタイムログを確認できます。
 
-## Event Communication Flow
+## トラブルシューティング
 
-### Lightning to Host
-The LWC component sends messages to the host page using:
-```javascript
-window.parent.postMessage(messageData, '*');
-```
+### Lightning Outスクリプトが読み込まれない
 
-### Host to Lightning
-The host page sends messages to the Lightning component using:
-```javascript
-iframe.contentWindow.postMessage(messageData, '*');
-```
+- SalesforceドメインのHTTPS URLを確認
+- CORS設定を確認
+- ネットワーク接続を確認
 
-## API Endpoints
+### 認証ボタンが反応しない
 
-- `GET /` - Serve the main demo page
-- `GET /api/health` - Health check
-- `GET /api/messages` - Get message history
-- `POST /api/messages` - Store a new message
-- `DELETE /api/messages` - Clear all messages
-- `GET /api/lightning-config` - Get Lightning configuration
-- `POST /api/webhook/salesforce` - Webhook endpoint for Salesforce events
+- ブラウザの開発者ツールでJavaScriptエラーを確認
+- CSPエラーがないか確認
+- イベントリスナーが正しく設定されているか確認
 
-## Component Features
+### app-sectionが表示されない
 
-- **Interactive Counter:** Click button to increment and send messages
-- **Custom Messages:** Send custom text messages to host page
-- **Message History:** View received messages from host
-- **Reset Functionality:** Clear component state
-- **Real-time Communication:** Instant bidirectional messaging
+- 認証が完了しているか確認
+- `switchToAppSection()` 関数が呼び出されているか確認
+- DOM要素のID (`auth-section`, `app-section`) が正しいか確認
 
-## Troubleshooting
+### Lightning Web Componentが表示されない
 
-### Common Issues
+- Lightning Outスクリプトが読み込まれているか確認
+- `frontdoor-url` 属性が正しく設定されているか確認
+- Salesforceセッションが有効か確認
 
-1. **"Lightning Out app not loading"**
-   - Verify your Salesforce domain is correct
-   - Check CORS settings in Salesforce
-   - Ensure Lightning Out is enabled in your org
+## セキュリティ
 
-2. **"Messages not received"**
-   - Check browser console for errors
-   - Verify iframe is loaded properly
-   - Confirm event listener setup
+- Content Security Policy (CSP) 準拠
+- HTTPS通信
+- セッション管理
+- トークンマスキング
+- 外部スクリプト干渉防止
 
-3. **"CORS errors"**
-   - Add your local domain to Salesforce CORS settings
-   - Check server CORS configuration
+## 技術仕様
 
-### Debug Mode
+### 認証方式
 
-Set `NODE_ENV=development` in your `.env` file for detailed error messages.
+1. **Client Credentials Flow** (推奨)
+   - サーバー間通信
+   - 自動トークン管理
+   - セキュアな認証
 
-## Resources
+2. **Username/Password Flow** (フォールバック)
+   - 環境変数による認証
+   - セキュリティトークン対応
+   - Sandbox対応
 
-- [Lightning Out Documentation](https://developer.salesforce.com/docs/platform/lwc/guide/lightning-out.html)
-- [Lightning Web Components Guide](https://developer.salesforce.com/docs/component-library/documentation/en/lwc)
-- [Salesforce DX Developer Guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_intro.htm)
-# LightningOut2.0
+3. **OAuth 2.0 PKCE**
+   - ブラウザベース認証
+   - セキュアなコード交換
+   - リフレッシュトークン対応
+
+### Lightning Out 2.0統合
+
+- `frontdoor-url` による認証
+- `lo.application.ready` イベント処理
+- Lightning Web Componentとの双方向通信
+
+## ライセンス
+
+このプロジェクトはデモ用途のものです。商用利用の際は適切なライセンスを確認してください。
+

@@ -1,0 +1,59 @@
+<!--cardComponent.html-->
+<template>
+  <lightning-card title={title} icon-name="standard:lightning_component">
+    <div class="slds-p-around_medium">
+      <div class="slds-text-heading_small slds-m-bottom_medium">
+        Lightning Web Component
+      </div>
+
+      <p class="slds-text-body_regular slds-m-bottom_medium">
+        {message}
+      </p>
+
+      <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_medium">
+        This component can receive messages from the host page and send responses back.
+      </p>
+
+      <div class="slds-m-bottom_medium">
+        <lightning-button
+          label="Send Message to Host Page"
+          variant="brand"
+          onclick={handleSendMessage}
+          class="slds-m-bottom_small"
+        >
+        </lightning-button>
+
+        <div class="slds-text-body_small slds-text-color_weak">
+          Click this button to test communication from LWC to the host page.
+        </div>
+      </div>
+
+      <div class="slds-text-heading_small slds-m-bottom_small">
+        Received Messages ({messages.length})
+      </div>
+
+      <template if:true={messages.length}>
+        <div class="message-list">
+          <template for:each={messages} for:item="message">
+            <div key={message.id} class="message-item slds-box slds-m-bottom_small">
+              <div class="slds-text-body_regular"><strong>Message:</strong> {message.text}</div>
+              <div class="slds-text-body_small slds-text-color_weak">
+                <strong>Time:</strong> {message.timestamp}
+              </div>
+              <div class="slds-text-body_small slds-text-color_weak">
+                <strong>Source:</strong> {message.source}
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <template if:false={messages.length}>
+        <div class="slds-text-body_regular slds-text-color_weak">
+          No messages received yet. Click "Send Message to LWC" on the host page to start
+          communication.
+        </div>
+      </template>
+    </div>
+  </lightning-card>
+</template>

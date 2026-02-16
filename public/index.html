@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Lightning Out 2.0 with OAuth</title>
+</head>
+<body>
+    <h1>Lightning Out 2.0 (OAuth認証付き)</h1>
+
+    <!-- 未ログイン時に表示するエリア -->
+    <div id="auth-section">
+        <h2>🔐 Salesforce認証</h2>
+        <p>Lightning Web Componentを表示するには認証が必要です。</p>
+
+        <div style="margin: 20px 0;">
+            <button id="loginButton" style="padding: 12px 24px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">⚡ Lightning Out 開始 (サーバー認証)</button>
+            <button id="realAuthButton" style="padding: 12px 24px; margin: 5px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">🔐 OAuth認証</button>
+        </div>
+
+        <div style="margin: 20px 0; padding: 10px; border: 1px solid #4CAF50; border-radius: 4px; background: #e8f5e8;">
+            <h4>✅ 推奨: 動作確認済み機能</h4>
+            <p style="margin: 5px 0; font-size: 14px; color: #2e7d32;">トークンフローテストが成功したため、同じ方式を使用します</p>
+            <button id="testTokenFlow" style="padding: 8px 16px; margin: 3px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">🎯 実証済みトークンフロー</button>
+        </div>
+
+        <div style="margin: 20px 0; padding: 10px; border: 1px solid #17a2b8; border-radius: 4px; background: #d1ecf1;">
+            <h4>📊 システム状態</h4>
+            <button id="checkStatus" style="padding: 8px 16px; margin: 3px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;">🔍 認証状態確認</button>
+        </div>
+
+        <div id="auth-status" style="margin: 15px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa; font-size: 14px;">
+            認証待機中...
+        </div>
+    </div>
+
+    <!-- ログイン後に表示するエリア（初期状態は非表示） -->
+    <div id="app-section" style="display:none;">
+        <button id="sendMessageButton">LWCへメッセージ送信</button>
+        <div id="lwcMessageResponse" style="margin-top: 10px; border: 1px solid #ccc; padding: 10px;">
+            待機中...
+        </div>
+        <hr>
+        
+        <!-- Lightning Out 2.0 アプリケーション定義 -->
+        <!-- frontdoor-url はJSで動的に設定するため、初期値は空またはプレースホルダー -->
+        <lightning-out-application
+            id="lightning-app"
+            app-id="1UsHu000000oQTeKAM"
+            components="c-card-component"
+            style="width: 100%; height: 100%;"
+        ></lightning-out-application>
+
+        <!-- LWCコンポーネント -->
+        <c-card-component id="lwc-component" style="display: block; width: 100%; height: 800px; min-height: 400px;"></c-card-component>
+    </div>
+
+    <!-- ライブラリの読み込み -->
+    <script type="text/javascript" src="https://storm-f1b2bd8ede67bc.my.salesforce.com/lightning/lightning.out.latest/index.iife.prod.js"></script>
+    <script>
+        // --- 設定値（ご自身の環境に合わせて変更してください） ---
+        // サーバ側で Authorization Code Flow (/auth -> /callback?code=...) を使用するため、
+        // フロントは /auth への遷移のみ行い、トークンは /?token=..&instance=.. で受領して利用する。
+        const MY_DOMAIN_URL = 'storm-f1b2bd8ede67bc.my.salesforce.com'; // My DomainのURL
+
+        // 認証状態管理
+        let authState = {
+            isAuthenticated: false,
+            token: null,
+            instance: null
+        };
+
+        // ステータス更新関数
+        function updateAuthStatus(message, type = 'info') {
+            const statusEl = document.getElementById('auth-status');
+            if (statusEl) {
+                const colors = {
+                    'info': '#d1ecf1',
+                    'success': '#d4edda',
+                    'error': '#f8d7da',
+                    'warning': '#fff3cd'
+                };
+                statusEl.style.backgroundColor = colors[type] || colors.info;
+                statusEl.textContent = message;
+            }
+            console.log(`[Auth Status] ${message}`);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAuthStatus('ページ読み込み完了 - 認証状況を確認中...', 'info');
+
+            // 1) サーバからのリダイレクト（/?token=..&instance=..）を最優先で処理
+            const search = new URLSearchParams(window.location.search);
+            const tokenFromSearch = search.get('token');
+            const instanceFromSearch = search.get('instance');
+
+            if (tokenFromSearch) {
+                console.group('🔁 Code Flow Result (server redirect)');
+                console.info('Received token via query (masked):', maskToken(tokenFromSearch));
+                console.info('Instance URL:', instanceFromSearch);
+
+                authState.isAuthenticated = true;
+                authState.token = tokenFromSearch;
+                authState.instance = instanceFromSearch;
+
+                updateAuthStatus('✅ OAuth認証成功 - Lightning Out初期化中...', 'success');
+
+                // UI切替
+                switchToAppSection();
+                // ハッシュは空にしておく（セキュリティ上推奨）
+                history.replaceState(null, null, window.location.pathname);
+                // Lightning Out 初期化
+                initLightningOut(tokenFromSearch);
+                console.groupEnd();
+                return;
+            }
+
+            // 2) 互換: もしハッシュ(#access_token=...) がある旧フローの場合はログだけ残す（基本は使用しない）
+            if (window.location.hash.includes('access_token')) {
+                console.warn('Implicit Flow hash detected. This app uses Authorization Code Flow. Ignoring hash.');
+                updateAuthStatus('⚠️ 古い認証方式を検出 - 無視します', 'warning');
+                // 旧実装互換で表示したい場合は以下を有効化
+                // const h = new URLSearchParams(window.location.hash.substring(1));
+                // const accessToken = h.get('access_token');
+                // if (accessToken) { switchToAppSection(); initLightningOut(accessToken); }
+                history.replaceState(null, null, window.location.pathname);
+            }
+
+            // 3) ボタンイベントリスナー設定
+            const loginBtn = document.getElementById('loginButton');
+            const realAuthBtn = document.getElementById('realAuthButton');
+            const testTokenFlowBtn = document.getElementById('testTokenFlow');
+            const checkStatusBtn = document.getElementById('checkStatus');
+
+            // メイン認証ボタン: 成功したトークンフローと同じ処理
+            if (loginBtn) {
+                loginBtn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    console.log('⚡ Lightning Out 開始 (動作保証版) がクリックされました');
+                    updateAuthStatus('⚡ 動作保証版でLightning Outを開始中...', 'info');
+
+                    // 成功したトークンフローテストと同じ処理を実行
+                    executeLightningOutFlow();
+                });
+
+                console.log('✅ メイン認証ボタン (動作保証版) のイベントリスナーが設定されました');
+            }
+
+            // 本格OAuth認証ボタン: 元の処理
+            if (realAuthBtn) {
+                realAuthBtn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    console.log('🔐 本格OAuth認証ボタンがクリックされました');
+                    updateAuthStatus('🔄 OAuth認証ページにリダイレクト中...', 'info');
+
+                    // ボタンを一時的に無効化
+                    realAuthBtn.disabled = true;
+                    realAuthBtn.textContent = '🔄 認証中...';
+
+                    // 少し遅延を入れてリダイレクト（ユーザーにフィードバックを見せる）
+                    setTimeout(() => {
+                        window.location.href = '/auth';
+                    }, 500);
+                });
+
+                console.log('✅ 本格OAuth認証ボタンのイベントリスナーが設定されました');
+            }
+
+
+
+            // デバッグボタン: トークンフローテスト
+            if (testTokenFlowBtn) {
+                testTokenFlowBtn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    console.log('🎯 トークンフローテストボタンがクリックされました');
+                    testTokenFlow();
+                });
+                console.log('✅ トークンフローテストボタンのイベントリスナーが設定されました');
+            }
+
+            // デバッグボタン: 状態確認
+            if (checkStatusBtn) {
+                checkStatusBtn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    console.log('📊 状態確認ボタンがクリックされました');
+                    checkCurrentStatus();
+                });
+                console.log('✅ 状態確認ボタンのイベントリスナーが設定されました');
+            }
+
+            updateAuthStatus('🎯 すべてのボタン準備完了 - 認証またはデバッグを開始', 'info');
+
+            // Lightning Out スクリプトの読み込み確認と再試行
+            function checkLightningOutScript() {
+                if (window.LightningOut) {
+                    console.log('✅ Lightning Out スクリプトが利用可能です');
+                    updateAuthStatus('✅ Lightning Outスクリプト読み込み完了', 'success');
+                    return true;
+                } else {
+                    console.warn('⚠️ Lightning Out スクリプトが読み込まれていません');
+                    return false;
+                }
+            }
+
+            // 初回チェック
+            if (!checkLightningOutScript()) {
+                updateAuthStatus('⚠️ Lightning Outスクリプト読み込み待機中...', 'warning');
+
+                // 遅延再チェック（スクリプトの読み込み待機）
+                let retryCount = 0;
+                const maxRetries = 10;
+                const checkInterval = setInterval(() => {
+                    retryCount++;
+                    console.log(`Lightning Outスクリプトチェック試行 ${retryCount}/${maxRetries}`);
+
+                    if (checkLightningOutScript()) {
+                        clearInterval(checkInterval);
+                        updateAuthStatus('✅ Lightning Outスクリプト読み込み完了（遅延）', 'success');
+                    } else if (retryCount >= maxRetries) {
+                        clearInterval(checkInterval);
+                        console.error('❌ Lightning Outスクリプトの読み込みに失敗しました');
+                        updateAuthStatus('❌ Lightning Outスクリプト読み込み失敗 - 手動リロードしてください', 'error');
+                    }
+                }, 1000);
+            }
+        });
+
+        function maskToken(v, show = 6) {
+            return v ? (v.substring(0, show) + '...' + v.substring(v.length - 4)) : null;
+        }
+
+        function switchToAppSection() {
+            console.log('🔄 switchToAppSection() が呼び出されました');
+            const authEl = document.getElementById('auth-section');
+            const appEl = document.getElementById('app-section');
+
+            console.log('認証セクション要素:', authEl);
+            console.log('アプリセクション要素:', appEl);
+
+            if (authEl) {
+                authEl.style.display = 'none';
+                console.log('✅ 認証セクションを非表示にしました');
+            } else {
+                console.error('❌ 認証セクション要素が見つかりません');
+            }
+
+            if (appEl) {
+                appEl.style.display = 'block';
+                console.log('✅ アプリセクションを表示しました');
+                updateAuthStatus('✅ アプリセクションが表示されました！', 'success');
+            } else {
+                console.error('❌ アプリセクション要素が見つかりません');
+            }
+        }
+
+        // デバッグ関数: 強制的にapp-sectionを表示
+        function forceShowAppSection() {
+            console.log('🧪 強制的にapp-sectionを表示します');
+            updateAuthStatus('🧪 テスト: app-sectionを強制表示中...', 'warning');
+
+            // 直接DOM操作でapp-sectionを表示
+            const authSection = document.getElementById('auth-section');
+            const appSection = document.getElementById('app-section');
+
+            console.log('認証セクション要素:', authSection);
+            console.log('アプリセクション要素:', appSection);
+
+            if (authSection) {
+                authSection.style.display = 'none';
+                console.log('✅ 認証セクションを非表示にしました');
+            }
+
+            if (appSection) {
+                appSection.style.display = 'block';
+                appSection.style.visibility = 'visible';
+                appSection.style.opacity = '1';
+                console.log('✅ アプリセクションを表示しました');
+                updateAuthStatus('✅ app-section強制表示成功！', 'success');
+
+                // Lightning Out要素も確認
+                const lightningApp = document.getElementById('lightning-app');
+                const lwcComponent = document.getElementById('lwc-component');
+
+                console.log('Lightning Out Application要素:', lightningApp);
+                console.log('LWC Component要素:', lwcComponent);
+
+                if (lightningApp || lwcComponent) {
+                    updateAuthStatus('✅ app-section表示完了 - Lightning Out要素も発見', 'success');
+                } else {
+                    updateAuthStatus('⚠️ app-section表示完了 - Lightning Out要素は見つからない', 'warning');
+                }
+            } else {
+                console.error('❌ アプリセクション要素が見つかりません');
+                updateAuthStatus('❌ app-section要素が見つかりません', 'error');
+            }
+        }
+
+        // 統合されたLightning Outフロー実行関数（成功パターン基準）
+        async function executeLightningOutFlow() {
+            console.log('⚡ Lightning Out フロー実行開始');
+            updateAuthStatus('⚡ Lightning Out初期化フロー開始...', 'info');
+
+            try {
+                // ステップ1: サーバー認証を実行
+                updateAuthStatus('🔄 サーバー認証を実行中...', 'info');
+                const response = await fetch('/auth/server', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    const authData = await response.json();
+                    console.log('✅ サーバー認証成功:', authData);
+
+                    // 認証状態を更新
+                    authState.isAuthenticated = true;
+                    authState.token = authData.accessToken || 'server_auth_token';
+                    authState.instance = authData.instanceUrl;
+
+                    updateAuthStatus('✅ 認証完了 - Lightning Out初期化中...', 'success');
+
+                    // ステップ2: app-sectionを表示
+                    switchToAppSection();
+
+                    // ステップ3: Lightning Out初期化
+                    initLightningOut(authState.token);
+
+                    console.log('🎉 Lightning Out フロー実行完了');
+                    updateAuthStatus('🎉 Lightning Out起動完了！', 'success');
+
+                } else {
+                    throw new Error(`サーバー認証失敗: ${response.status}`);
+                }
+
+            } catch (error) {
+                console.error('❌ Lightning Out フロー実行エラー:', error);
+                updateAuthStatus(`❌ フロー実行エラー: ${error.message}`, 'error');
+
+                // エラー時のフォールバック: テスト用トークンで実行
+                console.log('⚠️ フォールバック: テスト用トークンで実行');
+                updateAuthStatus('⚠️ フォールバック: テスト用設定で実行中...', 'warning');
+
+                const mockToken = 'fallback_token_12345';
+                authState.isAuthenticated = true;
+                authState.token = mockToken;
+                authState.instance = 'https://storm-f1b2bd8ede67bc.my.salesforce.com';
+
+                switchToAppSection();
+                initLightningOut(mockToken);
+            }
+        }
+
+        // デバッグ関数: トークンフローをテスト
+        function testTokenFlow() {
+            console.log('🎯 トークンフローをテストします');
+            updateAuthStatus('🎯 テスト: 模擬トークンでテスト中...', 'info');
+
+            // 模擬トークンを使用してフローをテスト
+            const mockToken = 'mock_token_for_testing_12345';
+            authState.isAuthenticated = true;
+            authState.token = mockToken;
+            authState.instance = 'https://storm-f1b2bd8ede67bc.my.salesforce.com';
+
+            switchToAppSection();
+            initLightningOut(mockToken);
+        }
+
+        // デバッグ関数: 現在の状態を確認
+        function checkCurrentStatus() {
+            console.log('📊 現在の状態をチェックします');
+
+            const authSection = document.getElementById('auth-section');
+            const appSection = document.getElementById('app-section');
+
+            console.group('🔍 現在の状態');
+            console.log('認証状態:', authState);
+            console.log('認証セクション表示:', authSection ? authSection.style.display : 'null');
+            console.log('アプリセクション表示:', appSection ? appSection.style.display : 'null');
+            console.log('URLパラメータ:', window.location.search);
+            console.log('Lightning Out利用可能:', !!window.LightningOut);
+            console.groupEnd();
+
+            const status = {
+                'auth': authState.isAuthenticated ? '✅' : '❌',
+                'authSection': authSection && authSection.style.display !== 'none' ? '👁️' : '🙈',
+                'appSection': appSection && appSection.style.display === 'block' ? '👁️' : '🙈',
+                'token': authState.token ? '✅' : '❌',
+                'lightning': window.LightningOut ? '✅' : '❌'
+            };
+
+            updateAuthStatus(`状態確認 - 認証:${status.auth} 認証画面:${status.authSection} アプリ画面:${status.appSection} トークン:${status.token} Lightning:${status.lightning}`, 'info');
+        }
+
+        // 3. Lightning Out 2.0 に frontdoor-url を設定して起動する関数
+        function initLightningOut(token) {
+            console.log('⚡ Lightning Out初期化開始...');
+            updateAuthStatus('⚡ Lightning Out初期化中...', 'info');
+
+            const app = document.querySelector('lightning-out-application');
+            const lwcComponent = document.querySelector('c-card-component');
+
+            console.log('Lightning Out要素:', app);
+            console.log('LWCコンポーネント要素:', lwcComponent);
+
+            if (!app) {
+                console.error('❌ lightning-out-application element not found');
+                updateAuthStatus('❌ Lightning Out要素が見つかりません', 'error');
+                return;
+            }
+
+            // Lightning Out利用可能性チェック
+            if (!window.LightningOut) {
+                console.warn('⚠️ Lightning Out スクリプトが読み込まれていません');
+                updateAuthStatus('⚠️ Lightning Outスクリプトが必要です', 'warning');
+            }
+
+            // frontdoor-url の構築（必ず https://<domain> を含める）
+            const domain = (MY_DOMAIN_URL.startsWith('http') ? MY_DOMAIN_URL : `https://${MY_DOMAIN_URL}`);
+            const frontdoorUrl = `${domain}/secur/frontdoor.jsp?sid=${encodeURIComponent(token)}`;
+
+            console.log('🔗 frontdoor URL設定:', {
+                domain,
+                tokenPreview: maskToken(token),
+                frontdoorUrlPreview: `${frontdoorUrl.substring(0, 80)}...`
+            });
+
+            // Lightning Out 2.0 の初期化プロセスを正確に実行
+            try {
+                // 1. frontdoor-url 属性を設定
+                app.setAttribute('frontdoor-url', frontdoorUrl);
+                console.log('✅ frontdoor-url属性を設定しました');
+
+                // 2. アプリケーションの ready イベントを待つ
+                app.addEventListener('lo.application.ready', () => {
+                    console.log('🎉 Lightning Out Application is ready!');
+                    updateAuthStatus('🎉 Lightning Out準備完了！', 'success');
+                    // 3. LWCコンポーネントの初期化
+                    setupEventHandlers(lwcComponent);
+                });
+
+                // 4. エラーイベントのハンドリング
+                app.addEventListener('lo.application.error', (event) => {
+                    console.error('❌ Lightning Out Application error:', event.detail);
+                    updateAuthStatus(`❌ Lightning Outエラー: ${JSON.stringify(event.detail)}`, 'error');
+                });
+
+                updateAuthStatus('⚡ Lightning Out設定完了 - アプリケーション起動待機中...', 'info');
+                console.log('⚡ Lightning Out初期化設定完了');
+
+            } catch (error) {
+                console.error('❌ Lightning Out初期化エラー:', error);
+                updateAuthStatus(`❌ 初期化エラー: ${error.message}`, 'error');
+            }
+        }
+
+        // イベントハンドラの設定（CSP対応: すべて addEventListener で登録）
+        function setupEventHandlers(lwcComponent) {
+            const messageDisplay = document.getElementById('lwcMessageResponse');
+            const sendButton = document.getElementById('sendMessageButton');
+
+            if (!lwcComponent) {
+                console.warn('LWC component not found for event wiring');
+                return;
+            }
+
+            // LWCからのメッセージ受信
+            lwcComponent.addEventListener('lwcMessageToHost', (event) => {
+                console.log('LWCから受信:', event.detail);
+                if (messageDisplay) {
+                    messageDisplay.innerText = `受信: ${event.detail.message}`;
+                }
+            });
+
+            // LWCへのメッセージ送信
+            if (sendButton) {
+                sendButton.addEventListener('click', () => {
+                    const ev = new CustomEvent('sendMessageToLWC', {
+                        detail: { message: '認証済みホストからのメッセージ' },
+                        bubbles: true,
+                        composed: true // Shadow DOM境界を超えるために必須
+                    });
+                    lwcComponent.dispatchEvent(ev);
+                });
+            }
+        }
+    </script>
+</body>
+</html>

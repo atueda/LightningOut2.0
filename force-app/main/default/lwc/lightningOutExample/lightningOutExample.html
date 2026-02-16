@@ -1,0 +1,29 @@
+<template>
+  <lightning-card title="Lightning Out 2.0 Example" icon-name="custom:custom14">
+    <div class="slds-m-around_medium">
+      <div class="slds-text-heading_medium slds-m-bottom_small">
+        Hello, {userName}!
+      </div>
+      <p class="slds-m-bottom_small">
+        Welcome to Lightning Out 2.0. This component is running outside of Salesforce.
+      </p>
+      <lightning-input
+        label="Your Name"
+        value={userName}
+        onchange={handleNameChange}
+      >
+      </lightning-input>
+      <div class="slds-m-top_small">
+        <lightning-button
+          label="Click Me"
+          onclick={handleClick}
+          variant="brand"
+        >
+        </lightning-button>
+      </div>
+      <div class="slds-m-top_small">
+        {message}
+      </div>
+    </div>
+  </lightning-card>
+</template>

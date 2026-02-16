@@ -1,0 +1,16 @@
+<template>
+    <lightning-card title="LWC in Salesforce Context">
+        <div class="slds-p-around_medium">
+            <p><strong>外部サイトからのメッセージ:</strong></p>
+            <p>{messageFromHost}</p>
+
+            <div class="slds-m-top_medium">
+                <lightning-button 
+                    label="外部サイトへ挨拶を送る" 
+                    onclick={handleSendToHost} 
+                    variant="brand">
+                </lightning-button>
+            </div>
+        </div>
+    </lightning-card>
+</template>
