@@ -17,9 +17,11 @@
 
         <template if:true={messagesFromHost.length}>
             <div class="slds-m-around_medium">
-                <p>Messages from Host:</p>
+                <p><strong>Messages from Host:</strong></p>
                 <template for:each={messagesFromHost} for:item="msg">
-                    <p key={msg}>{msg}</p>
+                    <div key={msg.id} class="slds-box slds-m-bottom_x-small">
+                        <p><strong>{msg.timestamp}:</strong> {msg.text}</p>
+                    </div>
                 </template>
             </div>
         </template>

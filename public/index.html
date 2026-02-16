@@ -435,8 +435,13 @@
                 app.addEventListener('lo.application.ready', () => {
                     console.log('🎉 Lightning Out Application is ready!');
                     updateAuthStatus('🎉 Lightning Out準備完了！', 'success');
-                    // 3. LWCコンポーネントの初期化
-                    setupEventHandlers(lwcComponent);
+
+                    // 3. LWCコンポーネントを再取得してイベントハンドラを設定
+                    setTimeout(() => {
+                        const readyLwcComponent = document.querySelector('c-card-component');
+                        console.log('Ready時のLWCコンポーネント:', readyLwcComponent);
+                        setupEventHandlers(readyLwcComponent);
+                    }, 100); // 少し待ってからコンポーネントを取得
                 });
 
                 // 4. エラーイベントのハンドリング
@@ -456,11 +461,15 @@
 
         // イベントハンドラの設定（CSP対応: すべて addEventListener で登録）
         function setupEventHandlers(lwcComponent) {
+            console.log('🔧 setupEventHandlers呼び出し:', lwcComponent);
             const messageDisplay = document.getElementById('lwcMessageResponse');
             const sendButton = document.getElementById('sendMessageButton');
 
+            console.log('📝 messageDisplay:', messageDisplay);
+            console.log('🔘 sendButton:', sendButton);
+
             if (!lwcComponent) {
-                console.warn('LWC component not found for event wiring');
+                console.warn('❌ LWC component not found for event wiring');
                 return;
             }
 
@@ -474,14 +483,20 @@
 
             // LWCへのメッセージ送信
             if (sendButton) {
+                console.log('✅ sendButtonにイベントリスナーを追加中...');
                 sendButton.addEventListener('click', () => {
+                    console.log('🔘 sendButtonがクリックされました！');
                     const ev = new CustomEvent('sendMessageToLWC', {
                         detail: { message: '認証済みホストからのメッセージ' },
                         bubbles: true,
                         composed: true // Shadow DOM境界を超えるために必須
                     });
+                    console.log('📤 LWCにイベントを送信:', ev.detail);
                     lwcComponent.dispatchEvent(ev);
                 });
+                console.log('✅ sendButtonイベントリスナー設定完了');
+            } else {
+                console.error('❌ sendButton要素が見つかりません');
             }
         }
     </script>
