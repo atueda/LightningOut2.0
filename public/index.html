@@ -86,6 +86,29 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            // Salesforce Web Vitals警告を抑制（表示のみ、機能には影響なし）
+            const originalError = console.error;
+            const originalWarn = console.warn;
+
+            console.error = function(...args) {
+                if (args.some(arg => typeof arg === 'string' && arg.includes('Unsupported WebVital metrics'))) {
+                    // Web Vitals警告は表示しない（デバッグ時は originalError.apply を使用）
+                    return;
+                }
+                originalError.apply(console, args);
+            };
+
+            console.warn = function(...args) {
+                if (args.some(arg => typeof arg === 'string' && (
+                    arg.includes('WebVital metrics') ||
+                    arg.includes('O11Y Error')
+                ))) {
+                    // パフォーマンス監視警告は表示しない
+                    return;
+                }
+                originalWarn.apply(console, args);
+            };
+
             updateAuthStatus('ページ読み込み完了 - 認証状況を確認中...', 'info');
 
             // 1) サーバからのリダイレクト（/?token=..&instance=..）を最優先で処理

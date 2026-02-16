@@ -15,6 +15,9 @@ Lightning Web Component (LWC) を外部のNode.js/Expressアプリケーショ�
 - ✅ Content Security Policy (CSP) 準拠
 - ✅ リアルタイム認証状態管理
 - ✅ 包括的なデバッグ機能
+- ✅ **LWCとホスト間の双方向メッセージ通信**
+- ✅ **Web Vitals警告フィルタリング機能**
+- ✅ **Lightning Out対応イベントハンドリング**
 
 ## 必要環境
 
@@ -99,15 +102,16 @@ node server.js
 
 ```
 LightnigOut2/
-├── server.js              # メインサーバーファイル
+├── server.js                     # メインサーバーファイル
 ├── public/
-│   └── index.html         # メインUI (動作保証版)
-├── OLD/                   # 使用しないファイル
-│   ├── working-index.html
-│   ├── security-clean.html
-│   └── simple-auth-test.html
-├── .env                   # 環境変数設定
-└── README.md             # このファイル
+│   └── index.html               # メインUI (Lightning Out 2.0対応)
+├── force-app/main/default/lwc/
+│   └── cardComponent/           # Lightning Web Component
+│       ├── cardComponent.html   # LWCテンプレート
+│       ├── cardComponent.js     # LWCロジック (双方向通信対応)
+│       └── cardComponent.js-meta.xml
+├── .env                         # 環境変数設定
+└── README.md                   # このファイル
 ```
 
 ## API エンドポイント
@@ -169,6 +173,29 @@ LightnigOut2/
 - `frontdoor-url` 属性が正しく設定されているか確認
 - Salesforceセッションが有効か確認
 
+### LWCメッセージ通信が動作しない
+
+- **症状**: ボタンクリック時にLWCでメッセージが表示されない
+- **原因**: Lightning Out環境でのイベントリスナー設定問題
+- **解決法**:
+  ```javascript
+  // ❌ 動作しない方法
+  this.template.addEventListener('sendMessageToLWC', handler);
+
+  // ✅ 正しい方法（Lightning Out対応）
+  this.addEventListener('sendMessageToLWC', handler);
+  ```
+
+### Web Vitals警告 (`Unsupported WebVital metrics: [2]`)
+
+- **症状**: コンソールに`O11Y Error: Unsupported WebVital metrics: [2]`が表示
+- **原因**: Salesforce Lightning Out 2.0のパフォーマンス監視システムからの内部警告
+- **影響**: **アプリケーションの動作には影響なし**
+- **対策**:
+  - 警告フィルタリング機能が自動的に適用される（index.html:90-110行目）
+  - 必要に応じてデバッグ時は元の警告を確認可能
+  - この警告は正常なLightning Out動作の一部
+
 ## セキュリティ
 
 - Content Security Policy (CSP) 準拠
@@ -201,6 +228,50 @@ LightnigOut2/
 - `frontdoor-url` による認証
 - `lo.application.ready` イベント処理
 - Lightning Web Componentとの双方向通信
+
+## LWCメッセージ通信機能
+
+### ホスト → LWC 通信
+
+```javascript
+// ホストページからLWCにメッセージを送信
+const event = new CustomEvent('sendMessageToLWC', {
+    detail: { message: '認証済みホストからのメッセージ' },
+    bubbles: true,
+    composed: true
+});
+lwcComponent.dispatchEvent(event);
+```
+
+### LWC → ホスト 通信
+
+```javascript
+// LWCからホストページにメッセージを送信
+const event = new CustomEvent('lwcMessageToHost', {
+    detail: { message: this.messageToHost },
+    bubbles: true,
+    composed: true
+});
+this.dispatchEvent(event);
+```
+
+### メッセージ表示
+
+LWCコンポーネントには以下の機能があります：
+
+- ✅ **初期化メッセージ表示** - コンポーネント読み込み完了の確認
+- ✅ **タイムスタンプ付きメッセージ履歴** - 受信したメッセージの時系列表示
+- ✅ **双方向通信テスト** - ホストとLWC間のリアルタイム通信
+- ✅ **デバッグログ出力** - 開発者ツールでの詳細ログ確認
+
+## デプロイメント
+
+### Salesforce組織へのデプロイ
+
+```bash
+# LWCコンポーネントをSalesforce組織にデプロイ
+sfdx project deploy start --source-dir force-app/main/default/lwc/cardComponent --target-org your-org-alias
+```
 
 ## ライセンス
 
